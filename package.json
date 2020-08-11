@@ -1,5 +1,5 @@
 {
-  "name": "zod-js-tools",
+  "name": "@zod/tools",
   "version": "1.0.0",
   "description": "some useful tools for javascript",
   "main": "./src/index.js",
