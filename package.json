@@ -2,26 +2,24 @@
   "name": "js-tools",
   "version": "1.0.0",
   "description": "some useful tools for javascript",
-  "main": "index.js",
+  "main": "./src/index.js",
+  "type": "./src/index.d.ts",
   "directories": {
     "test": "test"
   },
   "scripts": {
     "build": "npx webpack --config=webpack.config.js",
-    "test": "jasmine-ts --config=jasmine.json"
+    "test": "jasmine --config=jasmine.json"
   },
-  "author": "ali safari",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/grand-art/js-tools.git/"
+  },
+  "author": "zodiark",
   "license": "ISC",
   "devDependencies": {
     "@types/jasmine": "^3.5.11",
     "jasmine": "^3.5.0",
-    "jasmine-spec-reporter": "^5.0.2",
-    "jasmine-ts": "^0.3.0",
-    "ts-loader": "^8.0.1",
-    "ts-node": "^8.10.2",
-    "typescript": "^3.9.7",
-    "webpack": "^4.43.0",
-    "webpack-cli": "^3.3.12",
-    "webpack-dev-server": "^3.11.0"
+    "jasmine-spec-reporter": "^5.0.2"
   }
 }
