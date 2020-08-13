@@ -1,6 +1,6 @@
 {
   "name": "@zodiark/tools",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "some useful tools for javascript",
   "main": "./src/index.js",
   "type": "./src/index.d.ts",
