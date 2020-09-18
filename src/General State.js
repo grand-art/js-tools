@@ -1,111 +1,183 @@
-const { forward, deadFn, keys, opt, guard, route, err } = require("./tools.js");
-
+const { guard, swich, err, keys, each, at } = require('./tools.js')
 exports.createRouter = function () {
-    const virtualListeners = [];
-    virtualListeners.forEach = deadFn;
-    virtualListeners.add = (f, o1, path) => o1[path] = [f];
+  const values = {}
+  const initializers = {}
+  const watchers = {}
+  const cleaners = {}
+  const deleters = {}
 
-    const deadSet = { add: deadFn, delete:deadFn };
-    const _stars = {0:',', 1:',*'};
+  const primaries = 'number,string,function,boolean'
+  const enumerable = { enumerable: true, configurable: true }
+  const noenumerable = { enumerable: false, configurable: true, writable: true }
 
-    const values = {};
-    const watchers = opt(virtualListeners);
-    const cleaners = opt(virtualListeners);
-    const setters = opt(forward);
-    const getters = opt(forward);
-    const sets = opt({
-        add: route({
-            undefined: (_, path) => sets[path] = deadSet,
-            string: (child, anc) => { sets[anc] = new Set().add(child); values[anc] = construct(anc + ","); },
-            _: (child) => typeof child,
-        }),
-        delete: deadFn
-    });
-
-    const routerHandler = {
-        set({ route }, prop, value) {
-            switch (prop[0]) {
-                case '+': addListener(watchers, route + prop.slice(1), value); break;
-                case '-': addListener(cleaners, route + prop.slice(1), value); break;
-                case '#': setters.data[route + prop.slice(1)] = value; break;
-                case '$': getters.data[route + prop.slice(1)] = value; break;
-                default: 
-                    let path = route + prop;
-                    set(setters(path)(value), path); break;
-            }
-            return true;
-        },
-        get({ route }, prop) {
-            switch (prop[0]) {
-                case '-': switch (prop[1]) {
-                    case '+': watchers.data[route + prop.slice(2)] = virtualListeners; break;
-                    case '-': cleaners.data[route + prop.slice(2)] = virtualListeners; break;
-                }; break;
-                default: return get(route + prop);
-            }
-        },
-        deleteProperty({ route }, prop) {
-            del(route + prop);
-            return true;
+  const routerHandler = {
+    set ({ route }, prop, value) {
+      switch (prop[0]) {
+        case '$':
+          addListener(initializers, route + prop.slice(1), value)
+          break
+        case '+':
+          addListener(watchers, route + prop.slice(1), value)
+          break
+        case '-':
+          addListener(cleaners, route + prop.slice(1), value)
+          break
+        case '_':
+          addListener(deleters, route + prop.slice(1), value)
+          break
+        default:
+          set(value, route + prop)
+          break
+      }
+      return true
+    },
+    get (t, prop) {
+      const route = t.route
+      switch (prop[0]) {
+        case '-':
+          switch (prop[1]) {
+            case '+':
+              watchers.data[route + prop.slice(2)] = []
+              break
+            case '-':
+              cleaners.data[route + prop.slice(2)] = []
+              break
+          }
+          break
+        case '$':
+          return t
+        case '|':
+          return values[route + prop.slice(1)]
+            ? values[route + prop.slice(1)].$.length
+            : 0
+        default:
+          return values[route + prop]
+      }
+    },
+    deleteProperty ({ route }, prop) {
+      const path = route + prop
+      const val = values[path]
+      if (val !== undefined) {
+        del(val, path)
+        const [anc, child] = getAncestor(path)
+        if (anc) {
+          Object.defineProperty(values[anc].$, child, noenumerable)
+          values[anc].$.length--
         }
+      }
+      return true
+    },
+    ownKeys (t) {
+      return keys(t)
     }
-    const set = guard(route({
-        object: (val, path) => { path += ','; keys(val).forEach(k => set(val[k], path + k)); },
-        "number,string": {
-            undefined: (val, path) => {
-                values[path] = val;
-                splitAncestors(path).forEach(([anc, ...children]) => {
-                    sets(anc).add(children[0], anc);
-                    watchers(anc).forEach(f => f(values[anc], ...children));
-                    watchers(anc + stars(children.length)).forEach(f => f(values[path], ...children));
-                });
-            },
-            "number,string": (val, path) => {
-                if (val === values[path]) return;
-                let ancestors = splitAncestors(path);
-                emit(ancestors, path, cleaners, 'Right');
-                values[path] = val;
-                emit(ancestors, path, watchers);
-            },
-            _: (_, path) => typeof values[path],
-        }, _: (val) => typeof val,
+  }
+  const set = guard(
+    swich({
+      object: (val, path) => {
+        const p = path + ','
+        each((v, k) => set(v, p + k), val)
+      },
+      [primaries]: {
+        undefined: (val, path) => {
+          const ancestors = splitAncestors(path)
+          let index = 1
+          let created
+          if (ancestors.length > 1) {
+            do {
+              created = false
+              const anc = ancestors[index][0]
+              const key = at(-1, ancestors[index++])
+              let o = values[anc]
+              if (o === undefined) {
+                o = construct(anc + ',')
+                created = true
+              }
+              o = o.$
+              o.length++
+              Object.defineProperty(o, key, enumerable)
+            } while (
+              ancestors.length > index &&
+              (created || values[ancestors[index][0]] === undefined)
+            )
+          }
+          values[path] = val
+          emit(ancestors, val, initializers, watchers)
+        },
+        [primaries]: (val, path) => {
+          if (val === values[path]) return
+          const ancestors = splitAncestors(path)
+          emitR(ancestors, values[path], cleaners)
+          values[path] = val
+          emit(ancestors, val, watchers)
+        },
+        _: (_, path) => typeof values[path]
+      },
+      _: val => typeof val
     }),
-        (val, path) => typeof val === typeof values[path] || values[path] === undefined || err('set failed path: ' + path));
+    (val, path) =>
+      typeof val === typeof values[path] ||
+      values[path] === undefined ||
+      err('set failed path: ' + path)
+  )
 
-    const stars = route({
-        undefined: (n) => _stars[n] = ',*'+stars(n-1),
-        string: (n) => _stars[n],
-        _: (n) => typeof _stars[n]
-    });
-
-    function get(path) { return getters(path)(values[path]); }
-
-    function del(path) {
-        if (values[path] === undefined) return;
-        emit(splitAncestors(path), path, cleaners, 'Right');
-        values[path] = undefined;
-        let index = path.lastIndexOf(',');
-        sets[path.slice(0, index)].delete(path.slice(index + 1));
+  const del = swich({
+    object: (val, path) => {
+      const p = path + ','
+      each((v, k) => del(v, p + k), val)
+      values[path] = undefined
+    },
+    [primaries]: (val, path) => {
+      emitR(splitAncestors(path), val, cleaners, deleters)
+      values[path] = undefined
+    },
+    _: val => typeof val
+  })
+  function emit (ancestors, val, ...os) {
+    ancestors.forEach(([a, ...children]) =>
+      os.forEach(o => o[a] && o[a].forEach(f => f(val, ...children)))
+    )
+  }
+  function emitR (ancestors, val, ...os) {
+    ancestors.reduceRight(
+      (p, [a, ...children]) =>
+        os.forEach(o => o[a] && o[a].forEach(f => f(val, ...children))),
+      ''
+    )
+  }
+  function splitAncestors (path) {
+    const result = [[path]]
+    let index = path.lastIndexOf(',')
+    let ancestor = path.slice(0, index)
+    const keys = [path.slice(index + 1)]
+    path = ancestor
+    while (index !== -1) {
+      result.push([ancestor, ...keys])
+      index = ancestor.lastIndexOf(',')
+      ancestor = ancestor.slice(0, index)
+      keys.push(path.slice(index + 1))
+      path = ancestor
     }
-    function emit(ancestors, path, o1, r = '') {
-        ancestors['forEach' + r](([a, ...children]) => {
-            o1(a).forEach(f => f(values[a], ...children));
-            o1(a+stars(children.length)).forEach(f => f(values[path], ...children));
-        });
-    }
-    function splitAncestors(path) {
-        let result = [[path]];
-        let index = path.lastIndexOf(','), ancestor = path.slice(0, index), keys = [path.slice(index + 1)]; path = ancestor;
-        while (index !== -1) {
-            result.push([ancestor, ...keys])
-            index = ancestor.lastIndexOf(','), ancestor = ancestor.slice(0, index), keys.unshift(path.slice(index + 1)), path = ancestor;
+    return result
+  }
+  function getAncestor (path) {
+    const index = path.lastIndexOf(',')
+    return [path.slice(0, index), path.slice(index + 1)]
+  }
+  function addListener (o, path, fn) {
+    ;(o[path] || (o[path] = [])).push(fn)
+  }
+  function construct (route) {
+    return (values[route.slice(0, -1)] = new Proxy(
+      Object.defineProperties(
+        { route, length: 0 },
+        {
+          route: noenumerable,
+          length: noenumerable
         }
-        return result;
-    }
-    function addListener(w, path, f) { w(path).add(f, w.data, path); }
-    function construct(route) {
-        sets[route.slice(0, -1)] = new Set();
-        return new Proxy({ route }, routerHandler);
-    };
-    return construct('');
+      ),
+      routerHandler
+    ))
+  }
+  const rootProxy = construct('')
+  return rootProxy
 }
